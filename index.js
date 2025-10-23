@@ -1,6 +1,6 @@
-const axios = require("axios");
-const cheerio = require("cheerio");
-const ytSearch = require("yt-search");
+import axios from "axios";
+import cheerio from "cheerio";
+import ytSearch from "yt-search";
 
 export default async function handler(req, res) {
   const query = req.query.q;
@@ -39,8 +39,12 @@ export default async function handler(req, res) {
 
     res.status(200).json({
       success: true,
+      artist: song.primary_artist.name,
+      title: `${song.primary_artist.name} - ${song.title}`,
       lyrics: lyrics.trim(),
-      author: "MinatoCode"
+      author: "MinatoCode",
+      youtubeTitle: songTitle,
+      youtubeUrl: firstVideo.url
     });
 
   } catch (err) {
