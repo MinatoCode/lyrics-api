@@ -1,5 +1,5 @@
 import axios from "axios";
-import cheerio from "cheerio";
+import * as cheerio from "cheerio";
 import ytSearch from "yt-search";
 
 export default async function handler(req, res) {
@@ -51,3 +51,4 @@ export default async function handler(req, res) {
     res.status(500).json({ success: false, error: err.message });
   }
 }
+  
