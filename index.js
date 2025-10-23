@@ -1,73 +1,70 @@
-const express = require("express");
-const axios = require("axios");
-const cheerio = require("cheerio");
-const ytSearch = require("yt-search");
-
+// server.js
+const express = require('express');
+const fetch = require('node-fetch'); // npm install node-fetch@2
+const yts = require('yt-search');    // npm install yt-search
 const app = express();
-const port = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3000;
 
-app.get("/lyrics", async (req, res) => {
+// /lyrics endpoint
+app.get('/lyrics', async (req, res) => {
   const query = req.query.q;
-  if (!query) return res.status(400).json({ success: false, message: "No query provided" });
+  if (!query) return res.status(400).json({ success: false, error: 'Query parameter q is required' });
 
   try {
-    // Step 1: Search YouTube
-    const ytResult = await ytSearch(query);
-    if (!ytResult || !ytResult.videos || !ytResult.videos.length) {
-      return res.json({ success: false, message: "No YouTube video found" });
+    // 1️⃣ Search YouTube for song metadata
+    const searchResults = await yts(query);
+    const firstVideo = searchResults.videos[0];
+
+    if (!firstVideo) {
+      return res.status(404).json({ success: false, error: 'No YouTube video found for query' });
     }
 
-    const firstVideo = ytResult.videos[0];
-    const songTitle = firstVideo.title;
+    const songTitle = firstVideo.title || query;
+    const songArtist = firstVideo.author?.name || '';
 
-    // Step 2: Search Genius page via Google search
-    const geniusSearchUrl = `https://www.google.com/search?q=${encodeURIComponent(songTitle + " site:genius.com")}`;
-    const googlePage = await axios.get(geniusSearchUrl, {
+    // 2️⃣ Call DankLyrics API
+    const apiUrl = `https://danklyrics.com/api/lyrics?song=${encodeURIComponent(songTitle)}&artist=${encodeURIComponent(songArtist)}&album=`;
+
+    const response = await fetch(apiUrl, {
+      method: 'GET',
       headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+        "Accept": "*/*",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Accept-Language": "en-IN,en-GB;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Connection": "keep-alive",
+        "Referer": "https://danklyrics.com/",
+        "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36"
       }
     });
 
-    const $ = cheerio.load(googlePage.data);
-    let geniusLink = "";
-    $("a").each((i, el) => {
-      const href = $(el).attr("href");
-      if (href && href.includes("genius.com") && !href.includes("google.com")) {
-        const match = href.match(/\/url\?q=(.*?)&/);
-        if (match && match[1]) {
-          geniusLink = decodeURIComponent(match[1]);
-          return false; // break loop
-        }
-      }
-    });
+    const html = await response.text();
 
-    if (!geniusLink) return res.json({ success: false, message: "No Genius page found" });
+    // 3️⃣ Parse HTML to extract lyrics
+    const titleMatch = html.match(/<h2>(.*?)<\/h2>/);
+    const artistMatch = html.match(/<h3>(.*?)<\/h3>/);
+    const lyricsMatch = html.match(/<p class="lyrics-container"[^>]*>([\s\S]*?)<\/p>/);
 
-    // Step 3: Scrape lyrics from Genius page
-    const page = await axios.get(geniusLink, {
-      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" }
-    });
+    const lyricsText = lyricsMatch
+      ? lyricsMatch[1].replace(/<br\s*\/?>/g, '\n').replace(/<span>|<\/span>/g, '').trim()
+      : null;
 
-    const $$ = cheerio.load(page.data);
-    let lyrics = "";
-    $$('div[data-lyrics-container="true"]').each((i, el) => {
-      lyrics += $$(el).text() + "\n";
-    });
-
+    // 4️⃣ Send JSON response
     res.json({
       success: true,
-      title: songTitle,
-      lyrics: lyrics.trim(),
-      youtubeUrl: firstVideo.url,
-      author: "MinatoCode"
+      query,
+      song: titleMatch ? titleMatch[1] : songTitle,
+      artist: artistMatch ? artistMatch[1] : songArtist,
+      lyrics: lyricsText
     });
 
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    console.error(err);
+    res.status(500).json({ success: false, error: 'Failed to fetch lyrics' });
   }
 });
 
-app.listen(port, () => {
-  console.log(`Lyrics API running on http://localhost:${port}`);
+// Start server
+app.listen(PORT, () => {
+  console.log(`Lyrics API running on port ${PORT}`);
 });
-                                 
+                          
