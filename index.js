@@ -6,7 +6,7 @@ require("dotenv").config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const GENIUS_TOKEN = process.env.GENIUS_TOKEN;
+const GENIUS_TOKEN = process.env.GENIUS_TOKEN || EsrrrqzA8W4NE_xJfs82D_JxUhiFwj6aUNBoZfd2aQC7lmdMmHEjx5gZcq1BG2Kq;
 
 async function getLyricsFromGenius(title, artist) {
   try {
