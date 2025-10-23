@@ -4,7 +4,7 @@ const yts = require('yt-search');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Helper: parse "song by artist"
+// Parse "song by artist"
 function parseSongArtist(query) {
   const regex = /(.*)\s+by\s+(.+)/i;
   const match = query.match(regex);
@@ -12,88 +12,50 @@ function parseSongArtist(query) {
   return { song: query.trim(), artist: '' };
 }
 
-// Helper: clean HTML to text
-function cleanLyrics(html) {
-  return html
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<span[^>]*>|<\/span>/gi, '')
-    .replace(/&amp;/g, '&')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .trim();
-}
-
-// Check if lyrics likely match the song
-function isLyricsValid(lyrics, song, artist) {
-  if (!lyrics) return false;
-  const l = lyrics.toLowerCase();
-  return l.includes(song.toLowerCase()) || l.includes(artist.toLowerCase()) || lyrics.length > 50;
+// Get artist from YouTube if missing
+async function getArtistFromYT(songQuery) {
+  const searchResults = await yts(songQuery);
+  const firstVideo = searchResults.videos[0];
+  return firstVideo?.author?.name || '';
 }
 
 app.get('/lyrics', async (req, res) => {
-  const query = req.query.q;
+  let query = req.query.q;
   if (!query) return res.status(400).json({ success: false, error: 'Query parameter q is required' });
 
-  try {
-    let { song, artist } = parseSongArtist(query);
+  let { song, artist } = parseSongArtist(query);
 
-    // 1️⃣ Fallback to YouTube search if no artist
+  try {
     if (!artist) {
-      const searchResults = await yts(query);
-      const firstVideo = searchResults.videos[0];
-      if (firstVideo) {
-        song = firstVideo.title || song;
-        artist = firstVideo.author?.name || '';
-      }
+      artist = await getArtistFromYT(song);
+      if (!artist) return res.status(404).json({ success: false, error: 'Artist not found' });
     }
 
-    // 2️⃣ Try DankLyrics API
-    const apiUrl = `https://danklyrics.com/api/lyrics?song=${encodeURIComponent(song)}&artist=${encodeURIComponent(artist)}&album=`;
-    let response = await fetch(apiUrl, {
+    // Use exact DankLyrics API URL
+    const apiUrl = `https://api.danklyrics.com/dank/lyrics?song=${encodeURIComponent(song)}&artist=${encodeURIComponent(artist)}`;
+
+    const response = await fetch(apiUrl, {
       method: 'GET',
       headers: {
         "Accept": "*/*",
         "Accept-Encoding": "gzip, deflate, br",
-        "Accept-Language": "en-IN,en-GB;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Accept-Language": "en-US,en;q=0.9",
         "Connection": "keep-alive",
-        "Referer": "https://danklyrics.com/",
-        "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
+        "Referer": "https://danklyrics.com/"
       }
     });
 
-    let html = await response.text();
-    let lyricsMatch = html.match(/<p class="lyrics-container"[^>]*>([\s\S]*?)<\/p>/);
-    let lyricsText = lyricsMatch ? cleanLyrics(lyricsMatch[1]) : null;
+    if (!response.ok) return res.status(404).json({ success: false, error: 'Song not found in DankLyrics API' });
 
-    // 3️⃣ If lyrics invalid, scrape page directly
-    if (!isLyricsValid(lyricsText, song, artist)) {
-      const slugSong = song.toLowerCase().replace(/\s+/g, '-');
-      const slugArtist = artist.toLowerCase().replace(/\s+/g, '-');
-      const pageUrl = `https://danklyrics.com/${slugSong}-${slugArtist}`;
-
-      const pageResponse = await fetch(pageUrl, {
-        method: 'GET',
-        headers: {
-          "Accept": "*/*",
-          "Accept-Encoding": "gzip, deflate, br",
-          "Accept-Language": "en-IN,en-GB;q=0.9,en-US;q=0.8,en;q=0.7",
-          "Connection": "keep-alive",
-          "Referer": "https://danklyrics.com/",
-          "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36"
-        }
-      });
-
-      const pageHtml = await pageResponse.text();
-      lyricsMatch = pageHtml.match(/<p class="lyrics-container"[^>]*>([\s\S]*?)<\/p>/);
-      lyricsText = lyricsMatch ? cleanLyrics(lyricsMatch[1]) : null;
-    }
+    const data = await response.json();
 
     res.json({
       success: true,
       query,
-      song,
-      artist,
-      lyrics: lyricsText || "Lyrics not found"
+      song: data.song || song,
+      artist: data.artist || artist,
+      lyrics: data.lyrics || 'Lyrics not found'
     });
 
   } catch (err) {
@@ -102,7 +64,5 @@ app.get('/lyrics', async (req, res) => {
   }
 });
 
-// 4️⃣ Listen on Render port
-app.listen(PORT, () => {
-  console.log(`Lyrics API running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Lyrics API running on port ${PORT}`));
+        
