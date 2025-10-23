@@ -1,49 +1,52 @@
 const express = require("express");
 const axios = require("axios");
 const yts = require("yt-search");
+const cheerio = require("cheerio");
+require("dotenv").config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const GENIUS_TOKEN = process.env.GENIUS_TOKEN;
+
+async function getLyricsFromGenius(title, artist) {
+  try {
+    const searchQuery = `${artist} ${title}`;
+    const searchUrl = `https://api.genius.com/search?q=${encodeURIComponent(searchQuery)}`;
+
+    const { data } = await axios.get(searchUrl, {
+      headers: { Authorization: `Bearer ${GENIUS_TOKEN}` }
+    });
+
+    const song = data.response.hits[0]?.result;
+    if (!song) return null;
+
+    // Fetch lyrics page HTML
+    const page = await axios.get(song.url);
+    const $ = cheerio.load(page.data);
+
+    // Extract plain lyrics text
+    const lyrics = $("div[data-lyrics-container]").text().trim();
+    return lyrics || null;
+  } catch (err) {
+    console.error("Genius fetch failed:", err.message);
+    return null;
+  }
+}
 
 app.get("/lyrics", async (req, res) => {
   const query = req.query.q;
-  if (!query) {
-    return res.status(400).json({
-      success: false,
-      message: "Missing parameter: q"
-    });
-  }
+  if (!query) return res.status(400).json({ success: false, message: "Missing ?q=" });
 
   try {
-    // 🔍 Search YouTube for top result
+    // YouTube search for title + artist
     const r = await yts(query);
-    const video = r.videos && r.videos.length > 0 ? r.videos[0] : null;
+    const video = r.videos[0];
+    const title = video.title.replace(/\(.*?\)|\[.*?\]/g, "").replace(/official|lyrics|video/gi, "").trim();
+    const artist = video.author.name.replace(/- Topic|VEVO/gi, "").trim();
 
-    if (!video) {
-      return res.json({ success: false, message: "No YouTube results found" });
-    }
-
-    // 🎵 Extract artist and title
-    const title = video.title
-      .replace(/\(.*?\)|\[.*?\]/g, "")
-      .replace(/official|lyrics|video|mv/gi, "")
-      .trim();
-    const artist = video.author?.name
-      .replace(/- Topic|VEVO|Official/gi, "")
-      .trim();
-
-    // 🎶 Fetch lyrics from lyrics.ovh
-    const { data } = await axios.get(
-      `https://api.lyrics.ovh/v1/${encodeURIComponent(artist)}/${encodeURIComponent(title)}`
-    );
-
-    if (!data.lyrics) {
-      return res.json({
-        success: false,
-        message: "Lyrics not found",
-        artist,
-        title
-      });
+    const lyrics = await getLyricsFromGenius(title, artist);
+    if (!lyrics) {
+      return res.json({ success: false, artist, title, message: "Lyrics not found" });
     }
 
     res.json({
@@ -51,16 +54,12 @@ app.get("/lyrics", async (req, res) => {
       author: "MinatoCode",
       artist,
       title,
-      lyrics: data.lyrics
+      lyrics
     });
   } catch (err) {
-    res.json({
-      success: false,
-      message: "Error fetching lyrics",
-      error: err.message
-    });
+    res.json({ success: false, message: "Error: " + err.message });
   }
 });
 
 app.listen(PORT, () => console.log(`✅ Lyrics API running on port ${PORT}`));
-      
+
