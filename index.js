@@ -1,12 +1,16 @@
+const express = require("express");
 const axios = require("axios");
 const cheerio = require("cheerio");
 
-module.exports = async (req, res) => {
+const app = express();
+const port = process.env.PORT || 3000;
+
+app.get("/lyrics", async (req, res) => {
   const query = req.query.q;
   if (!query) return res.status(400).json({ success: false, message: "No query provided" });
 
   try {
-    // Step 1: Search Genius using public search
+    // Search Genius
     const searchUrl = `https://genius.com/api/search/multi?per_page=5&q=${encodeURIComponent(query)}`;
     const searchResp = await axios.get(searchUrl, {
       headers: { "User-Agent": "Mozilla/5.0" }
@@ -22,7 +26,7 @@ module.exports = async (req, res) => {
 
     const songUrl = hits[0].result.url;
 
-    // Step 2: Scrape lyrics
+    // Scrape lyrics
     const page = await axios.get(songUrl, { headers: { "User-Agent": "Mozilla/5.0" } });
     const $ = cheerio.load(page.data);
     let lyrics = "";
@@ -31,7 +35,7 @@ module.exports = async (req, res) => {
       lyrics += $(el).text().trim() + "\n";
     });
 
-    res.status(200).json({
+    res.json({
       success: true,
       title: hits[0].result.full_title,
       artist: hits[0].result.primary_artist.name,
@@ -43,4 +47,8 @@ module.exports = async (req, res) => {
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
-};
+});
+
+app.listen(port, () => {
+  console.log(`Lyrics API running on http://localhost:${port}`);
+});
