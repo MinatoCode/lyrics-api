@@ -1,8 +1,12 @@
-import axios from "axios";
-import * as cheerio from "cheerio";
-import ytSearch from "yt-search";
+const express = require("express");
+const axios = require("axios");
+const cheerio = require("cheerio");
+const ytSearch = require("yt-search");
 
-export default async function handler(req, res) {
+const app = express();
+const port = 3000;
+
+app.get("/lyrics", async (req, res) => {
   const query = req.query.q;
   if (!query) return res.status(400).json({ success: false, message: "No query provided" });
 
@@ -37,7 +41,7 @@ export default async function handler(req, res) {
       lyrics += $(el).text() + "\n";
     });
 
-    res.status(200).json({
+    res.json({
       success: true,
       artist: song.primary_artist.name,
       title: `${song.primary_artist.name} - ${song.title}`,
@@ -50,5 +54,9 @@ export default async function handler(req, res) {
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
-}
-  
+});
+
+app.listen(port, () => {
+  console.log(`Lyrics API running on http://localhost:${port}`);
+});
+                                                
