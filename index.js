@@ -4,36 +4,35 @@ const cheerio = require("cheerio");
 const ytSearch = require("yt-search");
 
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000;
 
 app.get("/lyrics", async (req, res) => {
   const query = req.query.q;
   if (!query) return res.status(400).json({ success: false, message: "No query provided" });
 
   try {
-    // Step 1: Search YouTube
+    // 1️⃣ Search YouTube
     const ytResult = await ytSearch(query);
     if (!ytResult || !ytResult.videos || !ytResult.videos.length) {
       return res.json({ success: false, message: "No YouTube video found" });
     }
-
     const firstVideo = ytResult.videos[0];
     const songTitle = firstVideo.title;
 
-    // Step 2: Search Genius with YouTube video title
-    const search = await axios.get("https://api.genius.com/search", {
+    // 2️⃣ Search Genius API
+    const geniusRes = await axios.get("https://api.genius.com/search", {
       params: { q: songTitle },
       headers: {
-        Authorization: "Bearer BU6n9H0WLGHsBil-32jaUEJK9Ia3ivLnXAF_Yp-sYLi19riuDLecmbW0kp-Hqfbw",
-      },
+        Authorization: "Bearer BU6n9H0WLGHsBil-32jaUEJK9Ia3ivLnXAF_Yp-sYLi19riuDLecmbW0kp-Hqfbw"
+      }
     });
 
-    const hits = search.data.response.hits;
+    const hits = geniusRes.data.response.hits;
     if (!hits.length) return res.json({ success: false, message: "No lyrics found" });
 
     const song = hits[0].result;
 
-    // Step 3: Scrape lyrics from Genius song page
+    // 3️⃣ Scrape lyrics from Genius page
     const page = await axios.get(song.url);
     const $ = cheerio.load(page.data);
     let lyrics = "";
@@ -59,4 +58,4 @@ app.get("/lyrics", async (req, res) => {
 app.listen(port, () => {
   console.log(`Lyrics API running on http://localhost:${port}`);
 });
-                                                
+  
