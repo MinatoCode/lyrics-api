@@ -1,22 +1,40 @@
+// server.js
 const express = require('express');
-const fetch = require('node-fetch'); // v2 only: npm install node-fetch@2
+const fetch = require('node-fetch'); // v2
 const yts = require('yt-search');
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Helper to parse "song by artist"
+function parseSongArtist(query) {
+  const regex = /(.*)\s+by\s+(.+)/i;
+  const match = query.match(regex);
+  if (match) {
+    return { song: match[1].trim(), artist: match[2].trim() };
+  }
+  return { song: query.trim(), artist: '' };
+}
 
 app.get('/lyrics', async (req, res) => {
   const query = req.query.q;
   if (!query) return res.status(400).json({ success: false, error: 'Query parameter q is required' });
 
   try {
-    const searchResults = await yts(query);
-    const firstVideo = searchResults.videos[0];
-    if (!firstVideo) return res.status(404).json({ success: false, error: 'No YouTube video found' });
+    // 1️⃣ Extract song and artist from query
+    let { song, artist } = parseSongArtist(query);
 
-    const songTitle = firstVideo.title || query;
-    const songArtist = firstVideo.author?.name || '';
+    // 2️⃣ If artist is missing, fallback to YouTube search
+    if (!artist) {
+      const searchResults = await yts(query);
+      const firstVideo = searchResults.videos[0];
+      if (firstVideo) {
+        song = firstVideo.title || song;
+        artist = firstVideo.author?.name || '';
+      }
+    }
 
-    const apiUrl = `https://danklyrics.com/api/lyrics?song=${encodeURIComponent(songTitle)}&artist=${encodeURIComponent(songArtist)}&album=`;
+    // 3️⃣ Call DankLyrics API
+    const apiUrl = `https://danklyrics.com/api/lyrics?song=${encodeURIComponent(song)}&artist=${encodeURIComponent(artist)}&album=`;
 
     const response = await fetch(apiUrl, {
       method: 'GET',
@@ -31,6 +49,8 @@ app.get('/lyrics', async (req, res) => {
     });
 
     const html = await response.text();
+
+    // 4️⃣ Parse HTML
     const titleMatch = html.match(/<h2>(.*?)<\/h2>/);
     const artistMatch = html.match(/<h3>(.*?)<\/h3>/);
     const lyricsMatch = html.match(/<p class="lyrics-container"[^>]*>([\s\S]*?)<\/p>/);
@@ -39,11 +59,12 @@ app.get('/lyrics', async (req, res) => {
       ? lyricsMatch[1].replace(/<br\s*\/?>/g, '\n').replace(/<span>|<\/span>/g, '').trim()
       : null;
 
+    // 5️⃣ Send JSON
     res.json({
       success: true,
       query,
-      song: titleMatch ? titleMatch[1] : songTitle,
-      artist: artistMatch ? artistMatch[1] : songArtist,
+      song: titleMatch ? titleMatch[1] : song,
+      artist: artistMatch ? artistMatch[1] : artist,
       lyrics: lyricsText
     });
 
@@ -56,4 +77,3 @@ app.get('/lyrics', async (req, res) => {
 app.listen(PORT, () => {
   console.log(`Lyrics API running on port ${PORT}`);
 });
-        
