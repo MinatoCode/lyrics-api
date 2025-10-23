@@ -2,10 +2,11 @@ const express = require("express");
 const axios = require("axios");
 const yts = require("yt-search");
 const cheerio = require("cheerio");
-require("dotenv").config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// ⚠️ Hardcoded token (replace with your actual token locally)
 const GENIUS_TOKEN = "EsrrrqzA8W4NE_xJfs82D_JxUhiFwj6aUNBoZfd2aQC7lmdMmHEjx5gZcq1BG2Kq";
 
 async function getLyricsFromGenius(title, artist) {
@@ -20,11 +21,9 @@ async function getLyricsFromGenius(title, artist) {
     const song = data.response.hits[0]?.result;
     if (!song) return null;
 
-    // Fetch lyrics page HTML
     const page = await axios.get(song.url);
     const $ = cheerio.load(page.data);
 
-    // Extract plain lyrics text
     const lyrics = $("div[data-lyrics-container]").text().trim();
     return lyrics || null;
   } catch (err) {
@@ -38,7 +37,6 @@ app.get("/lyrics", async (req, res) => {
   if (!query) return res.status(400).json({ success: false, message: "Missing ?q=" });
 
   try {
-    // YouTube search for title + artist
     const r = await yts(query);
     const video = r.videos[0];
     const title = video.title.replace(/\(.*?\)|\[.*?\]/g, "").replace(/official|lyrics|video/gi, "").trim();
@@ -51,7 +49,6 @@ app.get("/lyrics", async (req, res) => {
 
     res.json({
       success: true,
-      author: "MinatoCode",
       artist,
       title,
       lyrics
@@ -62,4 +59,3 @@ app.get("/lyrics", async (req, res) => {
 });
 
 app.listen(PORT, () => console.log(`✅ Lyrics API running on port ${PORT}`));
-
