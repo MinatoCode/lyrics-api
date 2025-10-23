@@ -1,6 +1,7 @@
 const express = require("express");
 const axios = require("axios");
 const cheerio = require("cheerio");
+const ytSearch = require("yt-search");
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -10,37 +11,54 @@ app.get("/lyrics", async (req, res) => {
   if (!query) return res.status(400).json({ success: false, message: "No query provided" });
 
   try {
-    // Search Genius
-    const searchUrl = `https://genius.com/api/search/multi?per_page=5&q=${encodeURIComponent(query)}`;
-    const searchResp = await axios.get(searchUrl, {
-      headers: { "User-Agent": "Mozilla/5.0" }
-    });
-
-    const hits = searchResp.data.response.sections
-      .find(section => section.type === "song")
-      ?.hits;
-
-    if (!hits || !hits.length) {
-      return res.json({ success: false, message: "No lyrics found" });
+    // Step 1: Search YouTube
+    const ytResult = await ytSearch(query);
+    if (!ytResult || !ytResult.videos || !ytResult.videos.length) {
+      return res.json({ success: false, message: "No YouTube video found" });
     }
 
-    const songUrl = hits[0].result.url;
+    const firstVideo = ytResult.videos[0];
+    const songTitle = firstVideo.title;
 
-    // Scrape lyrics
-    const page = await axios.get(songUrl, { headers: { "User-Agent": "Mozilla/5.0" } });
-    const $ = cheerio.load(page.data);
+    // Step 2: Search Genius page via Google search
+    const geniusSearchUrl = `https://www.google.com/search?q=${encodeURIComponent(songTitle + " site:genius.com")}`;
+    const googlePage = await axios.get(geniusSearchUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+      }
+    });
+
+    const $ = cheerio.load(googlePage.data);
+    let geniusLink = "";
+    $("a").each((i, el) => {
+      const href = $(el).attr("href");
+      if (href && href.includes("genius.com") && !href.includes("google.com")) {
+        const match = href.match(/\/url\?q=(.*?)&/);
+        if (match && match[1]) {
+          geniusLink = decodeURIComponent(match[1]);
+          return false; // break loop
+        }
+      }
+    });
+
+    if (!geniusLink) return res.json({ success: false, message: "No Genius page found" });
+
+    // Step 3: Scrape lyrics from Genius page
+    const page = await axios.get(geniusLink, {
+      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" }
+    });
+
+    const $$ = cheerio.load(page.data);
     let lyrics = "";
-
-    $('div[data-lyrics-container="true"]').each((i, el) => {
-      lyrics += $(el).text().trim() + "\n";
+    $$('div[data-lyrics-container="true"]').each((i, el) => {
+      lyrics += $$(el).text() + "\n";
     });
 
     res.json({
       success: true,
-      title: hits[0].result.full_title,
-      artist: hits[0].result.primary_artist.name,
+      title: songTitle,
       lyrics: lyrics.trim(),
-      url: songUrl,
+      youtubeUrl: firstVideo.url,
       author: "MinatoCode"
     });
 
@@ -52,3 +70,4 @@ app.get("/lyrics", async (req, res) => {
 app.listen(port, () => {
   console.log(`Lyrics API running on http://localhost:${port}`);
 });
+                                 
