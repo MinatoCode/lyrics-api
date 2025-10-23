@@ -6,13 +6,13 @@ const cheerio = require("cheerio");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ⚠️ Hardcoded token (replace with your actual token locally)
-const GENIUS_TOKEN = "EsrrrqzA8W4NE_xJfs82D_JxUhiFwj6aUNBoZfd2aQC7lmdMmHEjx5gZcq1BG2Kq";
+// ⚠️ Hardcoded Genius Access Token (replace with your real token locally)
+const GENIUS_TOKEN = "BU6n9H0WLGHsBil-32jaUEJK9Ia3ivLnXAF_Yp-sYLi19riuDLecmbW0kp-Hqfbw";
 
 async function getLyricsFromGenius(title, artist) {
   try {
-    const searchQuery = `${artist} ${title}`;
-    const searchUrl = `https://api.genius.com/search?q=${encodeURIComponent(searchQuery)}`;
+    const query = `${artist} ${title}`;
+    const searchUrl = `https://api.genius.com/search?q=${encodeURIComponent(query)}`;
 
     const { data } = await axios.get(searchUrl, {
       headers: { Authorization: `Bearer ${GENIUS_TOKEN}` }
@@ -37,25 +37,39 @@ app.get("/lyrics", async (req, res) => {
   if (!query) return res.status(400).json({ success: false, message: "Missing ?q=" });
 
   try {
+    // Search YouTube for proper song & artist names
     const r = await yts(query);
     const video = r.videos[0];
+
+    if (!video) return res.json({ success: false, message: "No video found" });
+
     const title = video.title.replace(/\(.*?\)|\[.*?\]/g, "").replace(/official|lyrics|video/gi, "").trim();
     const artist = video.author.name.replace(/- Topic|VEVO/gi, "").trim();
 
+    // Fetch lyrics from Genius
     const lyrics = await getLyricsFromGenius(title, artist);
+
     if (!lyrics) {
-      return res.json({ success: false, artist, title, message: "Lyrics not found" });
+      return res.json({
+        success: false,
+        artist,
+        title,
+        message: "Lyrics not found",
+        author: "MinatoCode"
+      });
     }
 
     res.json({
       success: true,
       artist,
       title,
-      lyrics
+      lyrics,
+      author: "MinatoCode"
     });
   } catch (err) {
-    res.json({ success: false, message: "Error: " + err.message });
+    res.json({ success: false, message: "Error: " + err.message, author: "MinatoCode" });
   }
 });
 
 app.listen(PORT, () => console.log(`✅ Lyrics API running on port ${PORT}`));
+  
