@@ -1,4 +1,3 @@
-// server.js
 const express = require('express');
 const fetch = require('node-fetch'); // v2
 const yts = require('yt-search');
@@ -38,7 +37,7 @@ app.get('/lyrics', async (req, res) => {
   try {
     let { song, artist } = parseSongArtist(query);
 
-    // 1️⃣ If no artist, fallback to YouTube search
+    // 1️⃣ Fallback to YouTube search if no artist
     if (!artist) {
       const searchResults = await yts(query);
       const firstVideo = searchResults.videos[0];
@@ -49,7 +48,7 @@ app.get('/lyrics', async (req, res) => {
     }
 
     // 2️⃣ Try DankLyrics API
-    let apiUrl = `https://danklyrics.com/api/lyrics?song=${encodeURIComponent(song)}&artist=${encodeURIComponent(artist)}&album=`;
+    const apiUrl = `https://danklyrics.com/api/lyrics?song=${encodeURIComponent(song)}&artist=${encodeURIComponent(artist)}&album=`;
     let response = await fetch(apiUrl, {
       method: 'GET',
       headers: {
@@ -66,7 +65,7 @@ app.get('/lyrics', async (req, res) => {
     let lyricsMatch = html.match(/<p class="lyrics-container"[^>]*>([\s\S]*?)<\/p>/);
     let lyricsText = lyricsMatch ? cleanLyrics(lyricsMatch[1]) : null;
 
-    // 3️⃣ If lyrics are invalid, fallback to scraping the page directly
+    // 3️⃣ If lyrics invalid, scrape page directly
     if (!isLyricsValid(lyricsText, song, artist)) {
       const slugSong = song.toLowerCase().replace(/\s+/g, '-');
       const slugArtist = artist.toLowerCase().replace(/\s+/g, '-');
@@ -89,7 +88,6 @@ app.get('/lyrics', async (req, res) => {
       lyricsText = lyricsMatch ? cleanLyrics(lyricsMatch[1]) : null;
     }
 
-    // 4️⃣ Return JSON
     res.json({
       success: true,
       query,
@@ -104,6 +102,7 @@ app.get('/lyrics', async (req, res) => {
   }
 });
 
+// 4️⃣ Listen on Render port
 app.listen(PORT, () => {
   console.log(`Lyrics API running on port ${PORT}`);
 });
